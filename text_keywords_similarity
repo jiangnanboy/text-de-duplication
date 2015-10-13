@@ -1,6 +1,7 @@
 package simhash2;
 
-/* Function: 首先使用统计方法提取文本关键词，再使用simHash计算文本相似度，中文分词使用IKAnalyzer，部分代码来自网络的改动
+/* Function: Firstly,the program used statistical method to extract text keywords,then used SimHash to calculate text similarity,
+IKAnalyzer to segment the Chinese words.Part of the code from the network and did some changes.
 
  */
 
