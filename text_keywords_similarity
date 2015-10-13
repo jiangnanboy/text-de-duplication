@@ -1,0 +1,949 @@
+package simhash2;
+
+/* Function: simHash 判断文本相似度，该示例程支持中文
+
+ */
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
+import java.math.BigInteger;
+
+import org.wltea.analyzer.core.IKSegmenter;
+import org.wltea.analyzer.core.Lexeme;
+
+
+
+/**
+* 
+* <p>Title:TfIdfAlgorithm</p>
+* <p>Description: tf-idf算法实现
+* </p>
+* @createDate：2013-8-25
+* @author xq
+* @version 1.0
+*/
+ class TfIdfAlgorithm {
+	/**
+	 * 文件名保存在list
+	 */
+	private  List<String> fileList = new ArrayList<String>(); 
+	/**
+	 * 所有文件tf结果.key:文件名,value:该文件tf
+	 */
+	private  Map<String, Map<String, Double>> allTfMap = new HashMap<String, Map<String, Double>>();  
+
+	/**
+	 * 所有文件分词结果.key:文件名,value:该文件分词统计
+	 */
+   private   Map<String, Map<String, Integer>> allSegsMap = new HashMap<String, Map<String, Integer>>(); 
+
+   /**
+	 * 所有文件分词的idf结果.key:文件名,value:词w在整个文档集合中的逆向文档频率idf (Inverse Document Frequency)，即文档总数n与词w所出现文件数docs(w, D)比值的对数
+	 */
+   private  Map<String, Double> idfMap = new HashMap<String, Double>();  
+
+   /**
+    * 统计包含单词的文档数  key:单词  value:包含该词的文档数
+    */
+   private  Map<String, Integer> containWordOfAllDocNumberMap=new HashMap<String, Integer>();
+
+   /**
+    * 统计单词的TF-IDF
+    * key:文件名 value:该文件tf-idf
+    */
+   private  Map<String, Map<String, Double>> tfIdfMap = new HashMap<String, Map<String, Double>>();  
+
+  
+   
+  
+   /**
+    *统计所有文本集中单词的文档频率
+    */
+   public static Map<String,Integer> allWordDF=new HashMap<String,Integer>();
+   /**
+    * 每个文件单词的基于别类的特征词
+    */
+   private Map<String,Map<String,Double>> weight_DF=new HashMap<String,Map<String,Double>>();
+   /**
+    * 每个文件单词的基于别类权值经排序的特征词
+    */
+   private Map<String, LinkedHashMap<String, Double>> final_weight_DF=new HashMap<String,LinkedHashMap<String,Double>>();
+   /**
+    * 每个文件单词，其权值是tfidf
+    */
+   private Map<String,LinkedHashMap<String,Double>> trueFinalWeight=new HashMap<String,LinkedHashMap<String,Double>>();
+	/**
+	 * 
+	* @Title: readDirs
+	* @Description: 递归获取文件
+	* @param @param filepath
+	* @param @return List<String>
+	* @param @throws FileNotFoundException
+	* @param @throws IOException    
+	* @return List<String>   
+	* @throws
+	 */
+   private  List<String> readDirs(String filepath) throws FileNotFoundException, IOException {  
+       try {  
+           File file = new File(filepath);  
+           if (!file.isDirectory()) {  
+               System.out.println("输入的参数应该为[文件夹名]");  
+               System.out.println("filepath: " + file.getAbsolutePath());  
+           } else if (file.isDirectory()) {  
+               String[] filelist = file.list();  
+               for (int i = 0; i < filelist.length; i++) {  
+                   File readfile = new File(filepath + File.separator + filelist[i]);  
+                   if (!readfile.isDirectory()) {  
+                       fileList.add(readfile.getAbsolutePath());  //文件名的绝对路径存入fileList
+                   } else if (readfile.isDirectory()) {  
+                       readDirs(filepath + File.separator + filelist[i]);  
+                   }  
+               }  
+           }  
+
+       } catch (FileNotFoundException e) {  
+           e.printStackTrace();
+       }  
+       return fileList;  
+   }
+
+   /**
+    * 
+   * @Title: readFile
+   * @Description: 读取文件转化成string
+   * @param @param file
+   * @param @return String
+   * @param @throws FileNotFoundException
+   * @param @throws IOException    
+   * @return String   
+   * @throws
+    */
+   private  String readFile(String file) throws FileNotFoundException, IOException {  
+       StringBuffer sb = new StringBuffer();  
+       InputStreamReader is = new InputStreamReader(new FileInputStream(file), "gbk");  
+       BufferedReader br = new BufferedReader(is);  
+       String line = br.readLine();  
+       while (line != null) {  
+           sb.append(line).append("\r\n");  
+           line = br.readLine();  
+       }  
+       br.close();  
+       return sb.toString();  
+   }  
+
+
+   /**
+    * 
+   * @Title: segString
+   * @Description: 用ik进行字符串分词,统计各个词出现的次数
+   * @param @param content
+   * @param @return  Map<String, Integer>  
+   * @return Map<String,Integer>   
+   * @throws
+    */
+   private Map<String, Integer> segString(String content){
+       // 分词
+       Reader input = new StringReader(content);
+       // 智能分词关闭（对分词的精度影响很大）
+       IKSegmenter iks = new IKSegmenter(input, true);
+       Lexeme lexeme = null;
+       Map<String, Integer> words = new HashMap<String, Integer>();
+       try {
+           while ((lexeme = iks.next()) != null) {
+               if (words.containsKey(lexeme.getLexemeText())) {
+                   words.put(lexeme.getLexemeText(), words.get(lexeme.getLexemeText()) + 1);
+               } else {
+                   words.put(lexeme.getLexemeText(), 1);
+               }
+           }
+       }catch(IOException e) {
+           e.printStackTrace();
+       }
+       return words;
+   }
+
+   /**
+    * 
+   * @Title: segStr
+   * @Description: 返回LinkedHashMap的分词
+   * @param @param content
+   * @param @return    
+   * @return Map<String,Integer>   
+   * @throws
+    */
+  /* public  Map<String, Integer> segStr(String content){
+       // 分词
+       Reader input = new StringReader(content);
+       // 智能分词关闭（对分词的精度影响很大）
+       IKSegmenter iks = new IKSegmenter(input, true);
+       Lexeme lexeme = null;
+       Map<String, Integer> words = new LinkedHashMap<String, Integer>();
+       try {
+           while ((lexeme = iks.next()) != null) {
+               if (words.containsKey(lexeme.getLexemeText())) {
+                   words.put(lexeme.getLexemeText(), words.get(lexeme.getLexemeText()) + 1);
+               } else {
+                   words.put(lexeme.getLexemeText(), 1);
+               }
+           }
+       }catch(IOException e) {
+           e.printStackTrace();
+       }
+       return words;
+   }
+*/
+  /* public  Map<String, Integer> getMostFrequentWords(int num,Map<String, Integer> words){
+
+       Map<String, Integer> keywords = new LinkedHashMap<String, Integer>();
+       int count=0;
+       // 词频统计
+       List<Map.Entry<String, Integer>> info = new ArrayList<Map.Entry<String, Integer>>(words.entrySet());
+       Collections.sort(info, new Comparator<Map.Entry<String, Integer>>() {
+           public int compare(Map.Entry<String, Integer> obj1, Map.Entry<String, Integer> obj2) {
+               return obj2.getValue() - obj1.getValue();
+           }
+       });
+
+       // 高频词输出
+       for (int j = 0; j < info.size(); j++) {
+           // 词-->频
+           if(info.get(j).getKey().length()>1){
+               if(num>count){
+                   keywords.put(info.get(j).getKey(), info.get(j).getValue());
+                   count++;
+               }else{
+                   break;
+               }
+           }
+       }
+       return keywords;
+   }*/
+
+   /**
+    * 
+   * @Title: tf
+   * @Description: 分词结果转化为tf,公式为:tf(w,d) = count(w, d) / size(d)
+   * 即词w在文档d中出现次数count(w, d)和文档d中总词数size(d)的比值
+   * @param @param segWordsResult
+   * @param @return    
+   * @return HashMap<String,Double>   
+   * @throws
+    */
+  
+   private  HashMap<String, Double> tf(Map<String, Integer> segWordsResult) { 
+
+       HashMap<String, Double> tf = new HashMap<String, Double>();// 正规化  
+       if(segWordsResult==null || segWordsResult.size()==0){
+   		return tf;
+   	}
+       Double size=Double.valueOf(segWordsResult.size());
+       Set<String> keys=segWordsResult.keySet();
+       for(String key: keys){
+       	Integer value=segWordsResult.get(key);
+       	tf.put(key, Double.valueOf(value)/size);
+       }
+       return tf;  
+   }  
+
+   /**
+    * 
+   * @Title: allTf
+   * @Description: 得到所有文件里单词的tf
+   * @param @param dir
+   * @param @return Map<String, Map<String, Double>>
+   * @return Map<String,Map<String,Double>>   
+   * @throws
+    */
+   public  Map<String, Map<String, Double>> allTf(String dir){
+   	try{
+   		fileList=readDirs(dir);//把要处理的文件名绝对路径存入fileList
+   		for(String filePath : fileList){
+   			String content=readFile(filePath);//把文件转为String型
+   			Map<String, Integer> segs=segString(content);//用ik进行字符串分词,统计各个词出现的次数
+ 			    allSegsMap.put(filePath, segs);
+   			allTfMap.put(filePath, tf(segs));
+   		}
+   	}catch(FileNotFoundException ffe){
+   		ffe.printStackTrace();
+   	}catch(IOException io){
+   		io.printStackTrace();
+   	}
+   	return allTfMap;
+   }
+
+   /**
+    * 
+   * @Title: wordSegCount
+   * @Description: 返回分词结果,以LinkedHashMap保存
+   * @param @param dir
+   * @param @return    
+   * @return Map<String,Map<String,Integer>>   
+   * @throws
+    */
+ /*  public  Map<String, Map<String, Integer>> wordSegCount(String dir){
+   	try{
+   		fileList=readDirs(dir);
+   		for(String filePath : fileList){
+   			String content=readFile(filePath);
+   			Map<String, Integer> segs=segStr(content);
+ 			    allSegsMap.put(filePath, segs);
+   		}
+   	}catch(FileNotFoundException ffe){
+   		ffe.printStackTrace();
+   	}catch(IOException io){
+   		io.printStackTrace();
+   	}
+   	return allSegsMap;
+   }
+*/
+
+   /**
+    * 
+   * @Title: containWordOfAllDocNumber
+   * @Description: 统计包含单词的文档数  key:单词  value:包含该词的文档数，所有单词的文档频率
+   * @param @param allSegsMap
+   * @param @return    
+   * @return Map<String,Integer>   
+   * @throws
+    */
+   public Map<String, Integer> containWordOfAllDocNumber(Map<String, Map<String, Integer>> allSegsMap){
+   	if(allSegsMap==null || allSegsMap.size()==0){
+   		return containWordOfAllDocNumberMap;
+   	}
+
+   	Set<String> fileList=allSegsMap.keySet();
+   	for(String filePath: fileList){
+   		Map<String, Integer> fileSegs=allSegsMap.get(filePath);
+   		//获取该文件分词为空或为0,进行下一个文件
+   		if(fileSegs==null || fileSegs.size()==0){
+   			continue;
+   		}
+   		//统计每个分词的idf
+   		Set<String> segs=fileSegs.keySet();
+   		for(String seg : segs){
+   			if (containWordOfAllDocNumberMap.containsKey(seg)) {
+   				containWordOfAllDocNumberMap.put(seg, containWordOfAllDocNumberMap.get(seg) + 1);
+               } else {
+               	containWordOfAllDocNumberMap.put(seg, 1);
+               }
+   		}
+
+   	}
+   	Set<String> segh=containWordOfAllDocNumberMap.keySet();
+   	for(String seg:segh){
+   		if(TfIdfAlgorithm.allWordDF.containsKey(seg)){
+   			TfIdfAlgorithm.allWordDF.put(seg, TfIdfAlgorithm.allWordDF.get(seg)+containWordOfAllDocNumberMap.get(seg));
+   		}else{
+   			TfIdfAlgorithm.allWordDF.put(seg, containWordOfAllDocNumberMap.get(seg));
+   		}
+   	}
+   	
+   	
+   	
+   	return containWordOfAllDocNumberMap;
+   }
+
+   /**
+    * 
+   * @Title: idf
+   * @Description: idf = log(n / docs(w, D)) ，所有单词的idf
+   * @param @param containWordOfAllDocNumberMap
+   * @param @return Map<String, Double> 
+   * @return Map<String,Double>   
+   * @throws
+    */
+   public  Map<String, Double> idf(Map<String, Map<String, Integer>> allSegsMap){
+   	if(allSegsMap==null || allSegsMap.size()==0){
+   		return idfMap;
+   	}
+   	containWordOfAllDocNumberMap=containWordOfAllDocNumber(allSegsMap);
+   	Set<String> words=containWordOfAllDocNumberMap.keySet();
+   	//Double wordSize=Double.valueOf(containWordOfAllDocNumberMap.size());
+   	for(String word: words){
+   		Double number=Double.valueOf(containWordOfAllDocNumberMap.get(word));
+   		idfMap.put(word, Math.log(300.0/number));
+   	}
+   	return idfMap;
+   }
+
+   /**
+    * 
+   * @Title: tfIdf
+   * @Description: tf-idf
+   * @param @param tf,idf
+   * @return Map<String, Map<String, Double>>   
+   * @throws
+    */
+   public  Map<String, Map<String, Double>> tfIdf(Map<String, Map<String, Double>> allTfMap,Map<String, Double> idf){
+
+   	Set<String> fileList=allTfMap.keySet();
+    	for(String filePath : fileList){
+   		Map<String, Double> tfMap=allTfMap.get(filePath);
+   		Map<String, Double> docTfIdf=new HashMap<String,Double>();
+   		Set<String> words=tfMap.keySet();
+   		for(String word: words){
+   			Double tfValue=Double.valueOf(tfMap.get(word));
+       		Double idfValue=idf.get(word);
+       		
+       		docTfIdf.put(word, tfValue*idfValue);}
+   		
+   		tfIdfMap.put(filePath, docTfIdf);
+   	}
+   	return tfIdfMap;
+   }
+
+   
+   public  Double weightDf(Double tf,Double dfc,Double df ){   //计算单词权
+	   Double wd=tf*Math.log((dfc*dfc/(df*df-df*dfc+1.0)+1.0))*(((2700.0-300.0)-(df-dfc))/(dfc+1));
+	   return wd;
+   }
+   
+   public Map<String, Map<String, Integer>> getAllSegsMap()
+{
+	return this.allSegsMap;
+}
+ public Map<String, Map<String, Double>> getallTfMap(){
+	 return this.allTfMap;
+ }
+public Map<String, Integer> getcontainWordOfAllDocNumberMap(){
+	return this.containWordOfAllDocNumberMap;
+}
+//public Map<String,Integer> getallWordDf(){
+	//return this.allWordDF;
+//}
+public Map<String,Map<String,Double>> getweight_Df(){
+	return this.weight_DF;
+}
+public Map<String, LinkedHashMap<String, Double>> getfinal_weight_Df(){
+	return this.final_weight_DF;
+}
+public Map<String, Map<String, Double>> gettfIdfMap(){
+	return this.tfIdfMap;
+}
+public Map<String,LinkedHashMap<String,Double>> gettrueFinalWeight(){
+	return this.trueFinalWeight;
+}
+public Map<String, Double> getidfMap(){
+	return this.idfMap;
+}
+/*public static void main(String[] args){
+	
+  System.out.println("========================分开=========================================");
+  for(int u=8;u<9;u++){
+	  Set<String> files=df[u].trueFinalWeight.keySet();
+	  for(String filePath:files){
+		  LinkedHashMap<String,Double> wg=df[u].trueFinalWeight.get(filePath);
+		  Set<String> sg=wg.keySet();
+		  int n=0;
+		  for(String wd:sg){
+			  System.out.println("类    "+u+"   文件名:  "+filePath+"    单词:  "+wd+(++n)+"      权值:  "+wg.get(wd));
+		  }
+	  }
+  }
+  /*System.out.println("========================分开=========================================");
+  for(int k=8;k<9;k++){
+	  Set<String> files=df[k].final_weight_DF.keySet();
+	  for(String filePath:files){
+		  LinkedHashMap<String,Double> wg=df[k].final_weight_DF.get(filePath);
+		  Set<String> sg=wg.keySet();
+		  int n=0;
+		  for(String wd:sg){
+			  System.out.println("类    "+k+"   文件名:  "+filePath+"    单词:  "+wd+(++n)+"      权值:  "+wg.get(wd));
+		  }
+	  }
+  }*/
+  
+/*for(int i=0;i<10;i++){
+	Set<String> files=df[i].weight_DF.keySet();
+	for(String filePath:files){
+		Map<String,Double> wegh=df[i].weight_DF.get(filePath);
+		Set<String> segs=wegh.keySet();
+		for(String word:segs){
+			System.out.println("类    "+i+"   文件名:  "+filePath+"    单词:  "+word+"      权值:  "+wegh.get(word));
+		}
+	}
+}*/
+  
+  /*for(int i=0;i<10;i++){
+	  Set<String> seg=df[i].containWordOfAllDocNumberMap.keySet();
+	  for(String word:seg){
+		  System.out.println("类"+i+"    单词　　"+word+"     "+df[i].containWordOfAllDocNumberMap.get(word));
+	  }
+  }
+  System.out.println("----------------------------");
+  Set<String> seg=TfIdfAlgorithm.allWordDF.keySet();
+  for(String word:seg){
+	  System.out.println("单词        "+word+"       "+TfIdfAlgorithm.allWordDF.get(word));
+  }*/
+ 
+  
+     	/*System.out.println("单词tf-idf--------------------------------------");
+     	for(int i=8;i<10;i++){
+     	Set<String> files=df[i].tfIdfMap.keySet();
+     	for(String filePath : files){
+     		Map<String, Double> tfIdf=df[i].tfIdfMap.get(filePath);
+   		Set<String> segs=tfIdf.keySet();
+   		int j=0;
+   		for(String word: segs){
+
+   			System.out.println("类"+i+"fileName:"+filePath+"     word:"+(++j)+word+"        tf-idf:"+tfIdf.get(word));
+   		}
+     	}
+     	}*/
+     	//System.exit(0); 
+     	
+   //}
+}
+
+
+
+
+
+
+
+
+
+
+
+public class SimHash2 {
+	
+   
+
+
+    private Map<String,LinkedHashMap<String,Double>> tfidfmap=new HashMap<String,LinkedHashMap<String,Double>>();
+    private BigInteger intSimHash;//BigInteger型指指纹
+    private String strSimHash;//String型指纹
+    private int hashbits = 64;//指纹为64位
+    
+    private Map<String,String> finger_print=new HashMap<String,String>();//存文件名和权值
+    
+    
+    
+    public SimHash2(Map<String,LinkedHashMap<String,Double>>tfidfvalue) throws IOException {  //构造函数，传入分词后的集合
+       this.tfidfmap=tfidfvalue;
+       this.simHash();
+    }
+  
+   
+    public void simHash() throws IOException {
+       
+        Set<String> files=tfidfmap.keySet();
+     	for(String filePath : files){
+     		double[] weight_value=new double[64];//存权值
+     		Map<String, Double> tfIdf=tfidfmap.get(filePath);
+   		Set<String> segs=tfIdf.keySet();
+   		for(String word: segs){
+ 
+            BigInteger t = this.hash(word);
+            for (int i = 0; i < this.hashbits; i++) {
+                BigInteger bitmask = new BigInteger("1").shiftLeft(i);
+                // 3、建立一个长度为64的整数数组(假设要生成64位的数字指纹,也可以是其它数字),
+                // 对每一个分词hash后的数列进行判断,如果是1000...1,那么数组的第一位和末尾一位加1,
+                // 中间的62位减一,也就是说,逢1加1,逢0减1.一直到把所有的分词hash数列全部判断完毕.
+                if (t.and(bitmask).signum() != 0) {  //这里是把BigInteger数值按位与求单个数
+                    // 这里是计算整个文档的所有特征的向量和
+                    // 这里实际使用中需要 +- 权重，比如词频，而不是简单的 +1/-1，
+                   weight_value[i]+=tfIdf.get(word);
+                } else {
+                  weight_value[i]-=tfIdf.get(word);
+                }
+            }
+   		}
+   		this.finger_print.put(filePath, this.finger(weight_value));
+   		
+     }
+     	
+    }
+public String finger(double[] weight_value){       
+        //BigInteger fingerprint = new BigInteger("0");
+        StringBuffer simHashBuffer = new StringBuffer();
+        for (int i = 0; i < this.hashbits; i++) {
+            // 4、最后对数组进行判断,大于0的记为1,小于等于0的记为0,得到一个 64bit 的数字指纹/签名.
+            if (weight_value[i] >= 0) {
+                //fingerprint = fingerprint.add(new BigInteger("1").shiftLeft(i));
+                simHashBuffer.append("1");
+            } else {
+                simHashBuffer.append("0");
+            }
+        }
+        this.strSimHash = simHashBuffer.toString();//生成string型64位数字指纹
+        //System.out.println(this.strSimHash + " length " + this.strSimHash.length());
+        return strSimHash;
+}
+    
+    
+    private BigInteger hash(String source) {//将每个分词hash为64位
+        if (source == null || source.length() == 0) {
+            return new BigInteger("0");
+        } else {
+            char[] sourceArray = source.toCharArray();//将此字符串转换为新的字符数组
+            BigInteger x = BigInteger.valueOf(((long) sourceArray[0]) << 7);//BigInteger x=BigInteger.valueof(1)相当于BigInteger x= new Biginteger("1")
+            BigInteger m = new BigInteger("1000003");
+            BigInteger mask = new BigInteger("2").pow(this.hashbits).subtract(new BigInteger("1"));
+            for (char item : sourceArray) {
+                BigInteger temp = BigInteger.valueOf((long) item);
+                x = x.multiply(m).xor(temp).and(mask);
+            }
+            x = x.xor(new BigInteger(String.valueOf(source.length())));
+            if (x.equals(new BigInteger("-1"))) {
+                x = new BigInteger("-2");
+            }
+            return x;
+        }
+    }
+
+    
+    
+    /*public int hammingDistance(SimHash2 other) {
+        BigInteger x = this.intSimHash.xor(other.intSimHash);
+        int tot = 0;
+        // 统计x中二进制位数为1的个数
+        // 我们想想，一个二进制数减去1，那么，从最后那个1（包括那个1）后面的数字全都反了，
+        // 对吧，然后，n&(n-1)就相当于把后面的数字清0，
+        // 我们看n能做多少次这样的操作就OK了。
+        while (x.signum() != 0) {
+            tot += 1;
+            x = x.and(x.subtract(new BigInteger("1")));
+        }
+        return tot;
+    }
+*/
+    public int getDistance(String str1, String str2) {
+        int distance;
+        if (str1.length() != str2.length()) {
+            distance = -1;
+        } else {
+            distance = 0;
+            for (int i = 0; i < str1.length(); i++) {
+                if (str1.charAt(i) != str2.charAt(i)) {
+                    distance++;
+                }
+            }
+        }
+        return distance;
+    }
+
+    /*public List subByDistance(SimHash2 simHash, int distance) {
+     // 分成几组来检查
+        int numEach = this.hashbits / (distance + 1);
+        List characters = new ArrayList();
+        StringBuffer buffer = new StringBuffer();
+        int k = 0;
+        for (int i = 0; i < this.intSimHash.bitLength(); i++) {
+            // 当且仅当设置了指定的位时，返回 true
+            boolean sr = simHash.intSimHash.testBit(i);
+            if (sr) {
+                buffer.append("1");
+            } else {
+                buffer.append("0");
+            }
+            if ((i + 1) % numEach == 0) {
+                // 将二进制转为BigInteger
+                BigInteger eachValue = new BigInteger(buffer.toString(), 2);
+                System.out.println("----" + eachValue);
+                buffer.delete(0, buffer.length());
+                characters.add(eachValue);
+            }
+        }
+        return characters;
+    }*/
+    public Map<String,String> getFinger()
+    {
+    	return finger_print;
+    }
+    public static void main(String[] args) throws IOException {
+       /*String s = "传统的 hash 算法只负责将原始内容尽量均匀随机地映射为一个签名值";
+        SimHash hash1 = new SimHash(s, 64);
+        System.out.println(hash1.intSimHash + "  " + hash1.intSimHash.bitLength());
+        // 计算 海明距离 在 3 以内的各块签名的 hash 值
+        hash1.subByDistance(hash1, 3);
+        // 删除首句话，并加入两个干扰串
+         * 
+         */
+    	
+/*    	String s;
+        s = "顺着妈妈喊and小明回家吃饭 about一马当先";
+        SimHash2 hash2 = new SimHash2(s, 64);
+        
+        
+        //System.out.println(hash2.intSimHash + "  " + hash2.intSimHash.bitCount());        
+        //hash2.subByDistance(hash2, 3);
+        
+        
+        
+        s ="首先妈妈叫小are明回家吃饭 一方面中华人民共和国抱头鼠窜";
+        SimHash2 hash3 = new SimHash2(s, 64);
+        
+        
+        //System.out.println(hash3.intSimHash + "  " + hash3.intSimHash.bitCount());
+        //hash3.subByDistance(hash3, 3);
+        
+        
+        System.out.println("============================");
+        
+        
+        //int dis = hash1.getDistance(hash1.strSimHash, hash2.strSimHash);
+        //System.out.println(hash1.hammingDistance(hash2) + " " + dis);
+        // 根据鸽巢原理（也成抽屉原理，见组合数学），如果两个签名的海明距离在 3 以内，它们必有一块签名subByDistance()完全相同。
+        //int dis2 = hash1.getDistance(hash1.strSimHash, hash3.strSimHash);
+       // System.out.println(hash1.hammingDistance(hash3) + " " + dis2);
+        
+        
+        int dis3=hash2.getDistance(hash2.strSimHash, hash3.strSimHash);
+        if(dis3<=3)
+        System.out.println("hash2和hash3海明距离为: "+dis3+"——————————两文本相似");
+        else
+        	System.out.println("hash2和hash3海明距离为："+dis3+"——————————两文本不相似");
+        
+        //System.out.println(hash2.hammingDistance(hash3)+" "+dis3);
+        
+ */
+    	
+    	
+    	
+    	TfIdfAlgorithm df[]=new TfIdfAlgorithm[9];
+    	for(int i=0;i<9;i++){
+    		df[i]=new TfIdfAlgorithm();
+    	}
+    	
+       	//System.out.println("tf--------------------------------------");
+       	df[0].allTf("D:\\我的文档\\Desktop\\关于实验语料库\\SogouC.reduced\\Reduced\\IT");
+         	//System.out.println("df--------------------------------------");
+        df[0].idf(df[0].getAllSegsMap());
+       
+       
+       
+    	//System.out.println("tf--------------------------------------");
+      	df[1].allTf("D:\\我的文档\\Desktop\\关于实验语料库\\SogouC.reduced\\Reduced\\财经");
+        	//System.out.println("df--------------------------------------");
+      	 df[1].idf(df[1].getAllSegsMap());
+      
+      
+
+    	//System.out.println("tf--------------------------------------");
+      	df[2].allTf("D:\\我的文档\\Desktop\\关于实验语料库\\SogouC.reduced\\Reduced\\健康");
+        	//System.out.println("df--------------------------------------");
+      	 df[2].idf(df[2].getAllSegsMap());
+      
+      
+       
+    	//System.out.println("tf--------------------------------------");
+      	df[3].allTf("D:\\我的文档\\Desktop\\关于实验语料库\\SogouC.reduced\\Reduced\\教育");
+        	//System.out.println("df--------------------------------------");
+      	 df[3].idf(df[3].getAllSegsMap());
+      
+       
+       
+    	//System.out.println("tf--------------------------------------");
+      	df[4].allTf("D:\\我的文档\\Desktop\\关于实验语料库\\SogouC.reduced\\Reduced\\军事");
+        	//System.out.println("df--------------------------------------");
+      	 df[4].idf(df[4].getAllSegsMap());
+      
+      
+      
+    	//System.out.println("tf--------------------------------------");
+      	df[5].allTf("D:\\我的文档\\Desktop\\关于实验语料库\\SogouC.reduced\\Reduced\\旅游");
+        	//System.out.println("df--------------------------------------");
+      	 df[5].idf(df[5].getAllSegsMap());
+      
+    	//System.out.println("tf--------------------------------------");
+      	df[6].allTf("D:\\我的文档\\Desktop\\关于实验语料库\\SogouC.reduced\\Reduced\\体育");
+        	//System.out.println("df--------------------------------------");
+      	 df[6].idf(df[6].getAllSegsMap());
+      
+      
+       
+    	//System.out.println("tf--------------------------------------");
+      	df[7].allTf("D:\\我的文档\\Desktop\\关于实验语料库\\SogouC.reduced\\Reduced\\文化");
+        	//System.out.println("df--------------------------------------");
+      df[7].idf(df[7].getAllSegsMap());
+      
+      
+     
+    	//System.out.println("tf--------------------------------------");
+      	df[8].allTf("D:\\我的文档\\Desktop\\关于实验语料库\\SogouC.reduced\\Reduced\\招聘");
+        	//System.out.println("df--------------------------------------");
+      df[8].idf(df[8].getAllSegsMap());
+      //每个类中每篇文本中分词后的权值
+      for(int l=0;l<9;l++){
+    	  
+    	  df[l].tfIdf(df[l].getallTfMap(), df[l].getidfMap());
+      }
+     
+      for(int i=0;i<9;i++){
+    	  Double tf1;
+    	  Double dfc;
+    	  Double df1;
+    	  Double weight;
+    	  Set<String> files=df[i].getallTfMap().keySet();
+    	  for(String filePath:files){
+    		  Map<String,Double> word_weight=new HashMap<String,Double>();
+
+    		  Map<String,Double> tf=df[i].getallTfMap().get(filePath);
+    		  Set<String> segs=tf.keySet();
+    		  for(String word:segs){
+    			  tf1=Double.valueOf(tf.get(word));
+    			  dfc=Double.valueOf(df[i].getcontainWordOfAllDocNumberMap().get(word));
+    			  df1=Double.valueOf(TfIdfAlgorithm.allWordDF.get(word));
+    			 weight=df[i].weightDf(tf1, dfc, df1);
+    			 word_weight.put(word, weight);
+    		  }
+    		  df[i].getweight_Df().put(filePath, word_weight);
+    	  }
+      }
+      for(int i=0;i<9;i++){
+    	  Set<String> files=df[i].getweight_Df().keySet();
+    	  for(String filePath:files){
+    		  Map<String,Double> wegh=df[i].getweight_Df().get(filePath);
+    		  List<Map.Entry<String, Double>> list_Data = new ArrayList<Map.Entry<String, Double>>(wegh.entrySet());  
+    		    Collections.sort(list_Data, new Comparator<Map.Entry<String, Double>>()  
+    		        {    
+    		      public int compare(Map.Entry<String, Double> o1, Map.Entry<String, Double> o2)  
+    		      {  
+    		        if ((o2.getValue() - o1.getValue())>0)  
+    		          return 1;  
+    		        else if((o2.getValue() - o1.getValue())==0)  
+    		          return 0;  
+    		        else   
+    		          return -1;  
+    		      }  
+    		        }  
+    		        );  
+    		    LinkedHashMap<String,Double> wf=new LinkedHashMap<String,Double>();
+    		    int m=0;
+    		    for (int j = 0; j < list_Data.size()*0.2; j++) {  //取每篇文本的前10%,20%,30%,40%,50%,60%,70%,80%的关键词
+    		        Map.Entry<String,Double> ent=list_Data.get(j);  
+    		       
+    		        //System.out.println("类 "+i+"  "+filePath+"     "+ent.getKey()+(++m)+"="+ent.getValue());  
+    		        wf.put(ent.getKey(), ent.getValue());  
+    		    }  
+    		    df[i].getfinal_weight_Df().put(filePath, wf);//final_weight_DF中存放经过value排序的关键词
+    	  }
+      }
+      for(int a=0;a<9;a++){
+    	  Set<String> files=df[a].getfinal_weight_Df().keySet();
+    	  for(String filePath:files){
+    		  LinkedHashMap<String,Double> kj=new LinkedHashMap<String,Double>();
+    		  Map<String, Double> tfIdf=df[a].gettfIdfMap().get(filePath);
+    		  LinkedHashMap<String,Double> wj=df[a].getfinal_weight_Df().get(filePath);
+    		  Set<String> segs=wj.keySet();
+    		  for(String word:segs){
+    			  if(tfIdf.containsKey(word)){
+    				  kj.put(word, tfIdf.get(word));
+    			  }
+    		  }
+    		  df[a].gettrueFinalWeight().put(filePath, kj);//用传统的tf*idf作为关键词权值，存放在trueFinalWeight中
+    	  }
+      }
+      /*System.out.println("========================分开=========================================");
+      for(int u=8;u<9;u++){
+    	  Set<String> files=df[u].trueFinalWeight.keySet();
+    	  for(String filePath:files){
+    		  LinkedHashMap<String,Double> wg=df[u].trueFinalWeight.get(filePath);
+    		  Set<String> sg=wg.keySet();
+    		  int n=0;
+    		  for(String wd:sg){
+    			  System.out.println("类    "+u+"   文件名:  "+filePath+"    单词:  "+wd+(++n)+"      权值:  "+wg.get(wd));
+    		  }
+    	  }
+      }*/
+    	/*for(int b=0;b<9;b++){
+         SimHash2 sh=new SimHash2(df[b].gettrueFinalWeight());
+         Map<String,String> fing_prn=new HashMap<String,String>();
+         	 fing_prn=sh.getFinger();
+         	
+         	Set<String> finger=fing_prn.keySet();
+         	int i=0;
+         	for(String files: finger){
+         		System.out.print("类"+b+"   Filepath:"+files+"    "+(++i)+"        fingerprint:"+fing_prn.get(files));
+         		System.out.println("    "+fing_prn.get(files).length());
+         	}
+    	}*/
+ 
+      
+      
+      
+      for(int b=2;b<3;b++){
+          SimHash2 sh=new SimHash2(df[b].gettrueFinalWeight());
+        Map<String,String> fing_prn=new HashMap<String,String>();
+          	 fing_prn=sh.getFinger();
+          	List<String> str_key=new ArrayList<String>();
+          	List<String> str_value=new ArrayList<String>();
+          	Set<String> finger=fing_prn.keySet();
+          	for(String files: finger){
+          		str_key.add(files);
+          		str_value.add(fing_prn.get(files));
+          	}
+          
+          	for(int i=0;i<str_value.size()-1;i++){
+          		for(int j=i+1;j<str_value.size();j++){
+          			
+          			int p=sh.getDistance(str_value.get(i), str_value.get(j));//p为设定的simhash距离
+          			if(p<=9){
+          				System.out.println("类"+b+"：中           文件 名: "+str_key.get(i));
+                 	    System.out.println("类"+b+"：中           文件 名: "+str_key.get(j));
+                 	
+                 	    System.out.println();
+                 	
+          			}
+          			
+          		}
+          	}
+          
+     	}
+         	System.exit(0); 
+    	   	
+    	    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
