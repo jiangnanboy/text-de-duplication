@@ -677,46 +677,6 @@ public String finger(double[] weight_value){
          * 
          */
     	
-/*    	String s;
-        s = "顺着妈妈喊and小明回家吃饭 about一马当先";
-        SimHash2 hash2 = new SimHash2(s, 64);
-        
-        
-        //System.out.println(hash2.intSimHash + "  " + hash2.intSimHash.bitCount());        
-        //hash2.subByDistance(hash2, 3);
-        
-        
-        
-        s ="首先妈妈叫小are明回家吃饭 一方面中华人民共和国抱头鼠窜";
-        SimHash2 hash3 = new SimHash2(s, 64);
-        
-        
-        //System.out.println(hash3.intSimHash + "  " + hash3.intSimHash.bitCount());
-        //hash3.subByDistance(hash3, 3);
-        
-        
-        System.out.println("============================");
-        
-        
-        //int dis = hash1.getDistance(hash1.strSimHash, hash2.strSimHash);
-        //System.out.println(hash1.hammingDistance(hash2) + " " + dis);
-        // 根据鸽巢原理（也成抽屉原理，见组合数学），如果两个签名的海明距离在 3 以内，它们必有一块签名subByDistance()完全相同。
-        //int dis2 = hash1.getDistance(hash1.strSimHash, hash3.strSimHash);
-       // System.out.println(hash1.hammingDistance(hash3) + " " + dis2);
-        
-        
-        int dis3=hash2.getDistance(hash2.strSimHash, hash3.strSimHash);
-        if(dis3<=3)
-        System.out.println("hash2和hash3海明距离为: "+dis3+"——————————两文本相似");
-        else
-        	System.out.println("hash2和hash3海明距离为："+dis3+"——————————两文本不相似");
-        
-        //System.out.println(hash2.hammingDistance(hash3)+" "+dis3);
-        
- */
-    	
-    	
-    	
     	TfIdfAlgorithm df[]=new TfIdfAlgorithm[9];
     	for(int i=0;i<9;i++){
     		df[i]=new TfIdfAlgorithm();
