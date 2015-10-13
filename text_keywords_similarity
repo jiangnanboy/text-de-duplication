@@ -1,6 +1,6 @@
 package simhash2;
 
-/* Function: simHash 判断文本相似度，该示例程支持中文
+/* Function: 首先使用统计方法提取文本关键词，再使用simHash计算文本相似度，中文分词使用IKAnalyzer，部分代码来自网络的改动
 
  */
 
@@ -910,40 +910,3 @@ public String finger(double[] weight_value){
     	   	
     	    }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
